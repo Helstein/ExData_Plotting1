@@ -1,14 +1,12 @@
+setClass("observationDate")
+setAs("character","observationDate", function(from) as.Date(from, format="%d/%m/%Y"))
 
-# Reads observations from input file where observation date is within a specified range.
-# Data is readed in chunks to reduce memory usage
-readObservations <- function(fileName, dateFrom, dateTo, chunkSize = 10000) {
+# Reads observations from input file where observation date is within a specified range
+# and returns results as string connection
+filteredObservationsCon <- function(fileName, dateFrom, dateTo, chunkSize = 10000) {
         inputFile <- file(fileName, "r")
-        dateFrom <- as.Date(dateFrom)
-        dateTo <- as.Date(dateTo)
         headers <- strsplit(readLines(inputFile, 1), ';')[[1]]
         rows <- vector()
-        setAs("character","observationDate", function(from) as.Date(from, format="%d/%m/%Y"))
-        setAs("character","observationTime", function(from) strptime(from, "%H:%M:%S"))
         
         while (length(lines <- readLines(inputFile, n = chunkSize, warn = FALSE)) > 0) {
                 lines <- Filter(f=function(line) {
@@ -20,10 +18,33 @@ readObservations <- function(fileName, dateFrom, dateTo, chunkSize = 10000) {
         
         close(inputFile)
         
-        con <- textConnection(rows)
-        result <- read.table(con, col.names=headers, sep=';', header=FALSE, 
-                   colClasses=c('observationDate', 'observationTime', 'numeric', 'numeric',
-                                'numeric', 'numeric', 'numeric', 'numeric', 'numeric'))
-        close(con)
-        result
+        textConnection(rows)
+}
+
+# Reads observations from input file where observation date is within a specified range.
+# If chunk size is specified, data is processed in chunks to reduce memory usage, 
+# but with reduced performance
+readObservations <- function(fileName, dateFrom, dateTo, chunkSize = 0) {
+        dateFrom <- as.Date(dateFrom)
+        dateTo <- as.Date(dateTo)
+        
+        if (chunkSize > 0) {
+                con <- filteredObservationsCon(fileName, dateFrom, dateTo, chunkSize = 0)
+        }
+        else {
+                con <- file(fileName, "r")
+        }
+        
+        result <- read.csv(con, sep=';', na.strings=c("?"),
+                 colClasses=c('observationDate', 'character', 'numeric', 'numeric',
+                              'numeric', 'numeric', 'numeric', 'numeric', 'numeric'))
+        
+        if(isOpen(con)) {
+                close(con)
+        }
+        
+        result <- result[result$Date >= dateFrom & result$Date <= dateTo,]
+        
+        cbind(DateTime = as.POSIXct(paste(result$Date, result$Time), format="%Y-%m-%d %H:%M:%S"),
+              result[,!(names(result) %in% c('Date', 'Time'))])
 }
